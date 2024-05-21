@@ -3,8 +3,8 @@
 #define variables
 AMI_ID="ami-0bb84b8ffd87024d8"
 INSTANCE_TYPE="t2.micro"
-KEY_NAME+"your-key-pair"
-SECURITY_GROUP+"your-security-group-id"
+KEY_NAME="your-key-pair"
+SECURITY_GROUP="your-security-group-id"
 SUBNET_ID="your-subnet-id"
 
 
@@ -75,10 +75,28 @@ sudo systemctl daemon-reload
 #Start and enable tomcat
 sudo systemctl start tomcat
 sudo systemctl enable tomcat
+
+sudo tee /home/ec2-user/check_tomcat.sh << 'EOL'
+
+# Define the URL to check if Tomcat is running
+TOMCAT_URL="http://localhost:8080"
+
+# Check if Tomcat is running by making a HEAD request to the URL
+if curl -s --head $TOMCAT_URL | grep "200 OK" > /dev/null
+then
+  echo "Tomcat is running"
+else
+  echo "Tomcat is not running, starting Tomcat"
+  sudo systemctl start tomcat
+fi
+EOL
+
+sudo chmod +x /home/ec2-user/check_tomcat.sh
+
+# Add a cron job to run the check_tomcat.sh script at 6 AM every weekday
+echo "0 6 * * 1-5 /home/ec2-user/check_tomcat.sh" | sudo tee -a /etc/crontab > /dev/null
+
 EOF
-
-#Output the status of the installation
-echo "Tomcat installed and started on EC2 instance $INSTANCE_ID"
-
+echo "Cron job scheduled to run the Tomcat validation script at 6 AM every weekday"
 
 
