@@ -1,0 +1,84 @@
+#!/bin/bash
+
+#define variables
+AMI_ID="ami-0bb84b8ffd87024d8"
+INSTANCE_TYPE="t2.micro"
+KEY_NAME+"your-key-pair"
+SECURITY_GROUP+"your-security-group-id"
+SUBNET_ID="your-subnet-id"
+
+
+#Launch EC2 Instance
+INSTANCE_ID=$(aws ec2 run-instances --image-id $AMI_ID --instance-type $INSTANCE_TYPE --key-name $KEY_NAME --security-group-ids $SECURITY_GROUP --subnet-id $SUBNET_ID --query 'Instances[0].InstanceId' --output text)
+
+#Wait until the instance is running
+aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+
+#Get the public DNS of the instance 
+PUBLIC_DNS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].PublicDnsName' --output text)
+
+
+#Output the instance ID and Public DNS
+echo "EC2 Instance $INSTANCE_ID is launched and running. Public DNS: $PUBLIC_DNS"
+
+
+#After You will SSH into the instance and install Tomcat
+ssh -i "path-to-your-key-pair.pem" ec2-user@$PUBLIC_DNS << 'EOF'
+
+sudo yum update -y 
+sudo yum install -y java-1.8.0-openjdk
+sudo useradd tomcat
+cd /tmp
+wget https://archive.apache.org/dist/tomcat/tomcat-9/v9.0.56/bin/apache-tomcat-9.0.56.tar.gz
+
+#Create tomcat directory and extract file
+
+sudo mkdir /opt/tomcat
+sudo tar xf apache-tomcat-9.0.56.tar.gz -C /opt/tomcat --strip-components=1
+
+#Set premission
+sudo chown -R tomcat: /opt/tomcat
+sudo sh -c 'chmod +x /opt/tomcat/bin/*.sh'
+
+
+#Create a systemd service for tomcat 
+
+sudo tee /etc/systemd/system/tomcat.service << 'EOL'
+[Unit]
+Description=Apache Tomcat Web Application Container
+After=network.target
+
+[Service]
+Type=forking
+
+User=tomcat
+Group=tomcat
+
+Environment=JAVA_HOME=/usr/lib/jvm/jre
+Environment=CATALINA_PID=/opt/tomcat/temp/tomcat.pid
+Environment=CATALINA_HOME=/opt/tomcat
+Environment=CATALINA_BASE=/opt/tomcat
+Environment='CATALINA_OPTS=-Xms512M -Xmx1024M -server -XX:+UseParallelGC'
+Environment='JAVA_OPTS=-Djava.awt.headless=true -Djava.security.egd=file:/dev/./urandom'
+
+ExecStart=/opt/tomcat/bin/startup.sh
+ExecStop=/opt/tomcat/bin/shutdown.sh
+
+[Install]
+WantedBy=multi-user.target
+EOL
+
+
+#reload systemd to apply changes
+sudo systemctl daemon-reload
+
+#Start and enable tomcat
+sudo systemctl start tomcat
+sudo systemctl enable tomcat
+EOF
+
+#Output the status of the installation
+echo "Tomcat installed and started on EC2 instance $INSTANCE_ID"
+
+
+
